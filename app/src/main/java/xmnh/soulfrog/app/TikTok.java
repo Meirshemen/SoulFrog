@@ -12,7 +12,8 @@ import java.io.File;
 import java.lang.reflect.Method;
 
 import io.github.libxposed.api.XposedModule;
-import io.github.libxposed.api.XposedInterface;
+import io.github.libxposed.api.XposedInterface.Chain;
+import io.github.libxposed.api.XposedInterface.Hooker;
 import xmnh.soulfrog.SoulFrog;
 import xmnh.soulfrog.interfaces.BaseHook;
 import xmnh.soulfrog.utils.HookUtil;
@@ -20,24 +21,26 @@ import xmnh.soulfrog.utils.HookUtil;
 
 public class TikTok implements BaseHook {
 
-    // מחלקת הראליזציה של ה-Hook עבור מנגנון השמירה המודרני
-    public static class InsertHooker implements XposedInterface.Hooker {
-        @XposedInterface.Before
-        public static void before(XposedInterface.BeforeHookCallback callback) {
+    // מימוש ה-Hooker לפי הארכיטקטורה המעודכנת של המאגר
+    public static class InsertHooker implements Hooker {
+        @Override
+        public Object intercept(Chain chain) throws Throwable {
             try {
-                Uri uri = (Uri) callback.getArgs()[0];
-                ContentValues values = (ContentValues) callback.getArgs()[1];
+                Uri uri = (Uri) chain.getArgs()[0];
+                ContentValues values = (ContentValues) chain.getArgs()[1];
                 
-                // אם טיקטוק מנסה להכניס סרטון למאגר המדיה של המכשיר
+                // תפיסת הזרקת הווידאו למאגר המדיה של המכשיר
                 if (uri != null && uri.toString().contains("video/media")) {
                     if (values != null) {
-                        // משנים את נתיב השמירה היחסי מ-Camera ל-Movies/TikTok
+                        // שינוי נתיב השמירה היחסי לתיקייה המבוקשת
                         values.put("relative_path", "Movies/TikTok");
                     }
                 }
             } catch (Exception e) {
                 Log.e(SoulFrog.TAG, "InsertHooker error", e);
             }
+            // המשך הרצת המתודה המקורית של טיקטוק
+            return chain.invoke();
         }
     }
 
@@ -47,7 +50,7 @@ public class TikTok implements BaseHook {
         String TARGET_OPERATOR_NAME = "T-Mobile";
         String TARGET_COUNTRY_ISO = "us";
         try {
-            // 1. זיוף סים ואזור (עובד פיקס)
+            // 1. זיוף סים ואזור (הקוד הקיים שעובד)
             Method getSimOperator = TelephonyManager.class.getDeclaredMethod("getSimOperator");
             HookUtil.replaceReturnValue(xposedModule, getSimOperator, TARGET_MCC_MNC);
             Method getSimOperatorName = TelephonyManager.class.getDeclaredMethod("getSimOperatorName");
@@ -61,11 +64,11 @@ public class TikTok implements BaseHook {
             Method getNetworkCountryIso = TelephonyManager.class.getDeclaredMethod("getNetworkCountryIso");
             HookUtil.replaceReturnValue(xposedModule, getNetworkCountryIso, TARGET_COUNTRY_ISO);
 
-            // 2. תפיסת מנגנון השמירה המודרני (MediaStore) של אנדרואיד
+            // 2. שינוי תיקיית הורדות מודרנית (MediaStore) - העברת Instance של ההוקר
             Method insertMethod = ContentResolver.class.getDeclaredMethod("insert", Uri.class, ContentValues.class);
-            xposedModule.hookMethod(insertMethod, InsertHooker.class);
+            xposedModule.hookMethod(insertMethod, new InsertHooker());
 
-            // 3. גיבוי למנגנון הישן (למכשירים/גרסאות ישנות יותר)
+            // 3. גיבוי למנגנון שמירה ישן
             Method getExternalStoragePublicDirectory = Environment.class.getDeclaredMethod("getExternalStoragePublicDirectory", String.class);
             File customDir = new File(Environment.getExternalStorageDirectory(), "Movies/TikTok");
             HookUtil.replaceReturnValue(xposedModule, getExternalStoragePublicDirectory, customDir);
