@@ -1,9 +1,15 @@
 package xmnh.soulfrog.app;
 
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Context;
+import android.net.Uri;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 
+import java.io.File;
 import java.lang.reflect.Method;
 
 import io.github.libxposed.api.XposedModule;
@@ -18,7 +24,8 @@ public class TikTok implements BaseHook {
         String TARGET_MCC_MNC = "310260";
         String TARGET_OPERATOR_NAME = "T-Mobile";
         String TARGET_COUNTRY_ISO = "us";
-        try{
+        try {
+            // 1. זיוף סים ואזור (הקוד הקיים שלך)
             Method getSimOperator = TelephonyManager.class.getDeclaredMethod("getSimOperator");
             HookUtil.replaceReturnValue(xposedModule, getSimOperator, TARGET_MCC_MNC);
             Method getSimOperatorName = TelephonyManager.class.getDeclaredMethod("getSimOperatorName");
@@ -31,6 +38,34 @@ public class TikTok implements BaseHook {
             HookUtil.replaceReturnValue(xposedModule, getNetworkOperatorName, TARGET_OPERATOR_NAME);
             Method getNetworkCountryIso = TelephonyManager.class.getDeclaredMethod("getNetworkCountryIso");
             HookUtil.replaceReturnValue(xposedModule, getNetworkCountryIso, TARGET_COUNTRY_ISO);
+
+            // ==========================================
+            // 2. תוספת: שינוי תיקיית הורדות ל-Movies/TikTok
+            // ==========================================
+            
+            // מנגנון שמירה מודרני (אנדרואיד 10 ומעלה)
+            Method insertMethod = ContentResolver.class.getDeclaredMethod("insert", Uri.class, ContentValues.class);
+            xposedModule.hookBefore(insertMethod, callback -> {
+                Uri uri = (Uri) callback.getArgs()[0];
+                ContentValues values = (ContentValues) callback.getArgs()[1];
+                
+                if (uri != null && uri.toString().contains("video/media")) {
+                    if (values != null && values.containsKey(MediaStore.Video.Media.RELATIVE_PATH)) {
+                        values.put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/TikTok");
+                    }
+                }
+            });
+
+            // מנגנון שמירה ישן (לגיבוי עבור מכשירים ישנים)
+            Method getExternalStoragePublicDirectory = Environment.class.getDeclaredMethod("getExternalStoragePublicDirectory", String.class);
+            xposedModule.hookBefore(getExternalStoragePublicDirectory, callback -> {
+                String type = (String) callback.getArgs()[0];
+                if (Environment.DIRECTORY_DCIM.equals(type) || Environment.DIRECTORY_MOVIES.equals(type)) {
+                    File customDir = new File(Environment.getExternalStorageDirectory(), "Movies/TikTok");
+                    callback.setResult(customDir);
+                }
+            });
+
         } catch (Exception e) {
             Log.e(SoulFrog.TAG, "TikTok hook error", e);
         }
