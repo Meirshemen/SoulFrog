@@ -21,26 +21,27 @@ import xmnh.soulfrog.utils.HookUtil;
 
 public class TikTok implements BaseHook {
 
-    // מימוש ה-Hooker לפי הארכיטקטורה המעודכנת של המאגר
+    // מימוש ה-Hooker לפי חוקי ה-API המדויקים של המאגר
     public static class InsertHooker implements Hooker {
         @Override
         public Object intercept(Chain chain) throws Throwable {
             try {
-                Uri uri = (Uri) chain.getArgs()[0];
-                ContentValues values = (ContentValues) chain.getArgs()[1];
+                // chain.getArgs() מחזיר List, לכן משתמשים ב-.get() כדי למנוע שגיאות מערך
+                Uri uri = (Uri) chain.getArgs().get(0);
+                ContentValues values = (ContentValues) chain.getArgs().get(1);
                 
                 // תפיסת הזרקת הווידאו למאגר המדיה של המכשיר
                 if (uri != null && uri.toString().contains("video/media")) {
                     if (values != null) {
-                        // שינוי נתיב השמירה היחסי לתיקייה המבוקשת
+                        // שינוי נתיב השמירה היחסי מ-Camera לתיקייה המבוקשת
                         values.put("relative_path", "Movies/TikTok");
                     }
                 }
             } catch (Exception e) {
                 Log.e(SoulFrog.TAG, "InsertHooker error", e);
             }
-            // המשך הרצת המתודה המקורית של טיקטוק
-            return chain.invoke();
+            // ב-LibXposed משתמשים ב-process() כדי להמשיך את ריצת המתודה המקורית
+            return chain.process();
         }
     }
 
@@ -50,7 +51,7 @@ public class TikTok implements BaseHook {
         String TARGET_OPERATOR_NAME = "T-Mobile";
         String TARGET_COUNTRY_ISO = "us";
         try {
-            // 1. זיוף סים ואזור (הקוד הקיים שעובד)
+            // 1. זיוף סים ואזור (עובד פיקס)
             Method getSimOperator = TelephonyManager.class.getDeclaredMethod("getSimOperator");
             HookUtil.replaceReturnValue(xposedModule, getSimOperator, TARGET_MCC_MNC);
             Method getSimOperatorName = TelephonyManager.class.getDeclaredMethod("getSimOperatorName");
@@ -64,9 +65,9 @@ public class TikTok implements BaseHook {
             Method getNetworkCountryIso = TelephonyManager.class.getDeclaredMethod("getNetworkCountryIso");
             HookUtil.replaceReturnValue(xposedModule, getNetworkCountryIso, TARGET_COUNTRY_ISO);
 
-            // 2. שינוי תיקיית הורדות מודרנית (MediaStore) - העברת Instance של ההוקר
+            // 2. תפיסת מנגנון השמירה המודרני (MediaStore) - שימוש במתודת hook הרשמית
             Method insertMethod = ContentResolver.class.getDeclaredMethod("insert", Uri.class, ContentValues.class);
-            xposedModule.hookMethod(insertMethod, new InsertHooker());
+            xposedModule.hook(insertMethod, InsertHooker.class);
 
             // 3. גיבוי למנגנון שמירה ישן
             Method getExternalStoragePublicDirectory = Environment.class.getDeclaredMethod("getExternalStoragePublicDirectory", String.class);
