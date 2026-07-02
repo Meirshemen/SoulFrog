@@ -11,29 +11,19 @@ import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
-import xmnh.soulfrog.app.HYKB;
-import xmnh.soulfrog.app.TapTap;
+import xmnh.soulfrog.app.TikTok;
 import xmnh.soulfrog.context.XpContext;
-import xmnh.soulfrog.factory.AppFactory;
-import xmnh.soulfrog.factory.GameFactory;
 import xmnh.soulfrog.interfaces.BaseHook;
 
 public class Jump implements IXposedHookLoadPackage {
 
-    /**
-     * 加固以及多dex处理方式
-     *
-     * @param consumer context 上下文 , ClassLoader 类加载器
-     */
     private void hookAttach(BiConsumer<Context, ClassLoader> consumer) {
         XposedHelpers.findAndHookMethod(Application.class, "attach",
                 Context.class,
                 new XC_MethodHook() {
                     public void afterHookedMethod(MethodHookParam param) throws Throwable {
-                        // 获取context上下文
                         Context context = XpContext.getContext((Context) param.args[0]);
                         try {
-                            // 获取classLoader类加载器
                             XpContext.classLoader = context.getClassLoader();
                         } catch (XposedHelpers.ClassNotFoundError e) {
                             XposedHelpers.findAndHookMethod(ClassLoader.class, "loadClass", String.class, new XC_MethodHook() {
@@ -58,21 +48,11 @@ public class Jump implements IXposedHookLoadPackage {
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam param) throws Throwable {
         try {
-//            ObjectionUtil.hideAll();
-            // 实例化工厂
-            BaseHook baseHook = AppFactory.init(param.processName);
-            BaseHook gameHook = GameFactory.init(param.processName);
-            // 调用hook方法
+            BaseHook tiktokHook = new TikTok();
             hookAttach((context, classLoader) -> {
-//                KillAdsUtil.killAds(classLoader);
-                if (baseHook != null) {
-                    baseHook.hook(context, classLoader);
+                if (tiktokHook != null) {
+                    tiktokHook.hook(context, classLoader);
                 }
-                if (gameHook != null) {
-                    gameHook.hook(context, classLoader);
-                }
-                TapTap.tapTap(context, classLoader);
-                HYKB.hykb(context, classLoader);
             });
 
         } catch (Throwable e) {
