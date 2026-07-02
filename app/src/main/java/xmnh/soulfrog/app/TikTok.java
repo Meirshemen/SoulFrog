@@ -13,6 +13,8 @@ import java.io.File;
 import java.lang.reflect.Method;
 
 import io.github.libxposed.api.XposedModule;
+import io.github.libxposed.api.XposedInterface.BeforeHookCallback;
+import io.github.libxposed.api.annotations.Before;
 import xmnh.soulfrog.SoulFrog;
 import xmnh.soulfrog.interfaces.BaseHook;
 import xmnh.soulfrog.utils.HookUtil;
@@ -25,7 +27,7 @@ public class TikTok implements BaseHook {
         String TARGET_OPERATOR_NAME = "T-Mobile";
         String TARGET_COUNTRY_ISO = "us";
         try {
-            // 1. זיוף סים ואזור
+            // 1. זיוף סים ואזור (באמצעות מחלקת העזר של המפתח)
             Method getSimOperator = TelephonyManager.class.getDeclaredMethod("getSimOperator");
             HookUtil.replaceReturnValue(xposedModule, getSimOperator, TARGET_MCC_MNC);
             Method getSimOperatorName = TelephonyManager.class.getDeclaredMethod("getSimOperatorName");
@@ -39,25 +41,36 @@ public class TikTok implements BaseHook {
             Method getNetworkCountryIso = TelephonyManager.class.getDeclaredMethod("getNetworkCountryIso");
             HookUtil.replaceReturnValue(xposedModule, getNetworkCountryIso, TARGET_COUNTRY_ISO);
 
-            // 2. שינוי תיקיית הורדות ל-Movies/TikTok
+            // ==========================================
+            // 2. שינוי תיקיית הורדות ל-Movies/TikTok (התאמה ל-LibXposed)
+            // ==========================================
+            
+            // מנגנון שמירה מודרני (אנדרואיד 10 ומעלה)
             Method insertMethod = ContentResolver.class.getDeclaredMethod("insert", Uri.class, ContentValues.class);
-            xposedModule.hookBefore(insertMethod, callback -> {
-                Uri uri = (Uri) callback.getArgs()[0];
-                ContentValues values = (ContentValues) callback.getArgs()[1];
-                
-                if (uri != null && uri.toString().contains("video/media")) {
-                    if (values != null && values.containsKey(MediaStore.Video.Media.RELATIVE_PATH)) {
-                        values.put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/TikTok");
+            xposedModule.hookMethod(insertMethod, new Object() {
+                @Before
+                public void before(BeforeHookCallback callback) {
+                    Uri uri = (Uri) callback.getArgs()[0];
+                    ContentValues values = (ContentValues) callback.getArgs()[1];
+                    
+                    if (uri != null && uri.toString().contains("video/media")) {
+                        if (values != null && values.containsKey(MediaStore.Video.Media.RELATIVE_PATH)) {
+                            values.put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/TikTok");
+                        }
                     }
                 }
             });
 
+            // מנגנון שמירה ישן (לגיבוי)
             Method getExternalStoragePublicDirectory = Environment.class.getDeclaredMethod("getExternalStoragePublicDirectory", String.class);
-            xposedModule.hookBefore(getExternalStoragePublicDirectory, callback -> {
-                String type = (String) callback.getArgs()[0];
-                if (Environment.DIRECTORY_DCIM.equals(type) || Environment.DIRECTORY_MOVIES.equals(type)) {
-                    File customDir = new File(Environment.getExternalStorageDirectory(), "Movies/TikTok");
-                    callback.setResult(customDir);
+            xposedModule.hookMethod(getExternalStoragePublicDirectory, new Object() {
+                @Before
+                public void before(BeforeHookCallback callback) {
+                    String type = (String) callback.getArgs()[0];
+                    if (Environment.DIRECTORY_DCIM.equals(type) || Environment.DIRECTORY_MOVIES.equals(type)) {
+                        File customDir = new File(Environment.getExternalStorageDirectory(), "Movies/TikTok");
+                        callback.setResult(customDir);
+                    }
                 }
             });
 
