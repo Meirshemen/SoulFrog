@@ -25,7 +25,7 @@ public class TikTok implements BaseHook {
         String TARGET_OPERATOR_NAME = "T-Mobile";
         String TARGET_COUNTRY_ISO = "us";
         try {
-            // 1. זיוף סים ואזור (הקוד הקיים שלך)
+            // 1. זיוף סים ואזור
             Method getSimOperator = TelephonyManager.class.getDeclaredMethod("getSimOperator");
             HookUtil.replaceReturnValue(xposedModule, getSimOperator, TARGET_MCC_MNC);
             Method getSimOperatorName = TelephonyManager.class.getDeclaredMethod("getSimOperatorName");
@@ -39,11 +39,7 @@ public class TikTok implements BaseHook {
             Method getNetworkCountryIso = TelephonyManager.class.getDeclaredMethod("getNetworkCountryIso");
             HookUtil.replaceReturnValue(xposedModule, getNetworkCountryIso, TARGET_COUNTRY_ISO);
 
-            // ==========================================
-            // 2. תוספת: שינוי תיקיית הורדות ל-Movies/TikTok
-            // ==========================================
-            
-            // מנגנון שמירה מודרני (אנדרואיד 10 ומעלה)
+            // 2. שינוי תיקיית הורדות ל-Movies/TikTok
             Method insertMethod = ContentResolver.class.getDeclaredMethod("insert", Uri.class, ContentValues.class);
             xposedModule.hookBefore(insertMethod, callback -> {
                 Uri uri = (Uri) callback.getArgs()[0];
@@ -56,7 +52,6 @@ public class TikTok implements BaseHook {
                 }
             });
 
-            // מנגנון שמירה ישן (לגיבוי עבור מכשירים ישנים)
             Method getExternalStoragePublicDirectory = Environment.class.getDeclaredMethod("getExternalStoragePublicDirectory", String.class);
             xposedModule.hookBefore(getExternalStoragePublicDirectory, callback -> {
                 String type = (String) callback.getArgs()[0];
