@@ -1,6 +1,9 @@
 package xmnh.soulfrog.app;
 
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Context;
+import android.net.Uri;
 import android.os.Environment;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -9,11 +12,9 @@ import java.io.File;
 import java.lang.reflect.Method;
 
 import io.github.libxposed.api.XposedModule;
-import io.github.libxposed.api.XposedInterface;
 import xmnh.soulfrog.SoulFrog;
 import xmnh.soulfrog.interfaces.BaseHook;
 import xmnh.soulfrog.utils.HookUtil;
-
 
 public class TikTok implements BaseHook {
     @Override
@@ -21,8 +22,9 @@ public class TikTok implements BaseHook {
         String TARGET_MCC_MNC = "310260";
         String TARGET_OPERATOR_NAME = "T-Mobile";
         String TARGET_COUNTRY_ISO = "us";
+        
         try {
-            // --- קוד קיים: מעקף הגבלות אזוריות ---
+            // 1. זיוף נתוני רשת וסים (הקוד המקורי הקיים)
             Method getSimOperator = TelephonyManager.class.getDeclaredMethod("getSimOperator");
             HookUtil.replaceReturnValue(xposedModule, getSimOperator, TARGET_MCC_MNC);
             Method getSimOperatorName = TelephonyManager.class.getDeclaredMethod("getSimOperatorName");
@@ -36,27 +38,38 @@ public class TikTok implements BaseHook {
             Method getNetworkCountryIso = TelephonyManager.class.getDeclaredMethod("getNetworkCountryIso");
             HookUtil.replaceReturnValue(xposedModule, getNetworkCountryIso, TARGET_COUNTRY_ISO);
 
-            // --- תכונה חדשה: שינוי נתיב הורדת סרטונים ל- Movies/TikTok ---
-            Method getPublicDir = Environment.class.getDeclaredMethod("getExternalStoragePublicDirectory", String.class);
-            
-            xposedModule.hookMethod(getPublicDir, new XposedInterface.Hooker() {
-                @Override
-                public void after(XposedInterface.AfterHookCallback callback) throws Throwable {
-                    String type = (String) callback.getArgs()[0];
+            // ==========================================
+            // 2. תפיסת מנגנון השמירה המודרני (MediaStore) עם התחביר המדויק של הפרויקט
+            // ==========================================
+            Method insertMethod = ContentResolver.class.getDeclaredMethod("insert", Uri.class, ContentValues.class);
+            xposedModule.hook(insertMethod).intercept(chain -> {
+                try {
+                    Uri uri = (Uri) chain.getArg(0);
+                    ContentValues values = (ContentValues) chain.getArg(1);
                     
-                    // בודק אם טיקטוק מבקשת את תיקיית הסרטים (Movies) או תיקיית המצלמה הכללית (DCIM)
-                    if (Environment.DIRECTORY_MOVIES.equals(type) || Environment.DIRECTORY_DCIM.equals(type)) {
-                        File originalDir = (File) callback.getResult();
-                        if (originalDir != null) {
-                            // יוצר נתיב חדש: Movies/TikTok
-                            File tiktokDir = new File(originalDir, "TikTok");
-                            if (!tiktokDir.exists()) {
-                                tiktokDir.mkdirs(); // יצירת התיקייה במכשיר במידה והיא לא קיימת
-                            }
-                            callback.setResult(tiktokDir); // החלפת התוצאה שהאפליקציה תקבל
+                    // ניתוב מחדש של השמירה לתיקייה המותאמת אישית
+                    if (uri != null && uri.toString().contains("video/media")) {
+                        if (values != null) {
+                            values.put("relative_path", "Movies/TikTok");
                         }
                     }
+                } catch (Exception e) {
+                    Log.e(SoulFrog.TAG, "Insert hook error", e);
                 }
+                return chain.proceed(); // המשך ריצה טבעית עם הערכים המעודכנים
+            });
+
+            // ==========================================
+            // 3. גיבוי למנגנון השמירה הישן - בדיקה כירורגית כדי לא לדרוס תיקיות אחרות
+            // ==========================================
+            Method getExternalStoragePublicDirectory = Environment.class.getDeclaredMethod("getExternalStoragePublicDirectory", String.class);
+            xposedModule.hook(getExternalStoragePublicDirectory).intercept(chain -> {
+                String type = (String) chain.getArg(0);
+                // רק אם האפליקציה מבקשת במפורש את תיקיית המצלמה או הסרטים
+                if (Environment.DIRECTORY_DCIM.equals(type) || Environment.DIRECTORY_MOVIES.equals(type)) {
+                    return new File(Environment.getExternalStorageDirectory(), "Movies/TikTok");
+                }
+                return chain.proceed();
             });
 
         } catch (Exception e) {
