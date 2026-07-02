@@ -1,9 +1,6 @@
 package xmnh.soulfrog.app;
 
-import android.content.ContentResolver;
-import android.content.ContentValues;
 import android.content.Context;
-import android.net.Uri;
 import android.os.Environment;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -12,46 +9,20 @@ import java.io.File;
 import java.lang.reflect.Method;
 
 import io.github.libxposed.api.XposedModule;
-import io.github.libxposed.api.XposedInterface.Chain;
-import io.github.libxposed.api.XposedInterface.Hooker;
+import io.github.libxposed.api.XposedInterface;
 import xmnh.soulfrog.SoulFrog;
 import xmnh.soulfrog.interfaces.BaseHook;
 import xmnh.soulfrog.utils.HookUtil;
 
 
 public class TikTok implements BaseHook {
-
-    // מימוש ה-Hooker לפי חוקי ה-API המדויקים של המאגר
-    public static class InsertHooker implements Hooker {
-        @Override
-        public Object intercept(Chain chain) throws Throwable {
-            try {
-                // chain.getArgs() מחזיר List, לכן משתמשים ב-.get() כדי למנוע שגיאות מערך
-                Uri uri = (Uri) chain.getArgs().get(0);
-                ContentValues values = (ContentValues) chain.getArgs().get(1);
-                
-                // תפיסת הזרקת הווידאו למאגר המדיה של המכשיר
-                if (uri != null && uri.toString().contains("video/media")) {
-                    if (values != null) {
-                        // שינוי נתיב השמירה היחסי מ-Camera לתיקייה המבוקשת
-                        values.put("relative_path", "Movies/TikTok");
-                    }
-                }
-            } catch (Exception e) {
-                Log.e(SoulFrog.TAG, "InsertHooker error", e);
-            }
-            // ב-LibXposed משתמשים ב-process() כדי להמשיך את ריצת המתודה המקורית
-            return chain.process();
-        }
-    }
-
     @Override
     public void hook(XposedModule xposedModule, Context context, ClassLoader classLoader) {
         String TARGET_MCC_MNC = "310260";
         String TARGET_OPERATOR_NAME = "T-Mobile";
         String TARGET_COUNTRY_ISO = "us";
         try {
-            // 1. זיוף סים ואזור (עובד פיקס)
+            // --- קוד קיים: מעקף הגבלות אזוריות ---
             Method getSimOperator = TelephonyManager.class.getDeclaredMethod("getSimOperator");
             HookUtil.replaceReturnValue(xposedModule, getSimOperator, TARGET_MCC_MNC);
             Method getSimOperatorName = TelephonyManager.class.getDeclaredMethod("getSimOperatorName");
@@ -65,14 +36,28 @@ public class TikTok implements BaseHook {
             Method getNetworkCountryIso = TelephonyManager.class.getDeclaredMethod("getNetworkCountryIso");
             HookUtil.replaceReturnValue(xposedModule, getNetworkCountryIso, TARGET_COUNTRY_ISO);
 
-            // 2. תפיסת מנגנון השמירה המודרני (MediaStore) - שימוש במתודת hook הרשמית
-            Method insertMethod = ContentResolver.class.getDeclaredMethod("insert", Uri.class, ContentValues.class);
-            xposedModule.hook(insertMethod, InsertHooker.class);
-
-            // 3. גיבוי למנגנון שמירה ישן
-            Method getExternalStoragePublicDirectory = Environment.class.getDeclaredMethod("getExternalStoragePublicDirectory", String.class);
-            File customDir = new File(Environment.getExternalStorageDirectory(), "Movies/TikTok");
-            HookUtil.replaceReturnValue(xposedModule, getExternalStoragePublicDirectory, customDir);
+            // --- תכונה חדשה: שינוי נתיב הורדת סרטונים ל- Movies/TikTok ---
+            Method getPublicDir = Environment.class.getDeclaredMethod("getExternalStoragePublicDirectory", String.class);
+            
+            xposedModule.hookMethod(getPublicDir, new XposedInterface.Hooker() {
+                @Override
+                public void after(XposedInterface.AfterHookCallback callback) throws Throwable {
+                    String type = (String) callback.getArgs()[0];
+                    
+                    // בודק אם טיקטוק מבקשת את תיקיית הסרטים (Movies) או תיקיית המצלמה הכללית (DCIM)
+                    if (Environment.DIRECTORY_MOVIES.equals(type) || Environment.DIRECTORY_DCIM.equals(type)) {
+                        File originalDir = (File) callback.getResult();
+                        if (originalDir != null) {
+                            // יוצר נתיב חדש: Movies/TikTok
+                            File tiktokDir = new File(originalDir, "TikTok");
+                            if (!tiktokDir.exists()) {
+                                tiktokDir.mkdirs(); // יצירת התיקייה במכשיר במידה והיא לא קיימת
+                            }
+                            callback.setResult(tiktokDir); // החלפת התוצאה שהאפליקציה תקבל
+                        }
+                    }
+                }
+            });
 
         } catch (Exception e) {
             Log.e(SoulFrog.TAG, "TikTok hook error", e);
